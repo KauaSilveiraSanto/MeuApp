@@ -1,11 +1,13 @@
-// components/AuthContext.tsx (CÓDIGO COMPLETO E CORRIGIDO)
+// components/AuthContext.tsx (Versão Final e Estável)
 
-import { onAuthStateChanged } from 'firebase/auth';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth } from '../services/firebase'; // Caminho para 'services'
+// IMPORTAÇÃO ESSENCIAL: onAuthStateChanged deve vir do 'firebase/auth'
+import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
+// 🚨 IMPORTAÇÃO CRÍTICA: O caminho é crucial
+import { auth } from './../services/firebase';
 
 interface AuthContextType {
-  user: any; 
+  user: FirebaseUser | null; 
   loading: boolean;
 }
 
@@ -16,17 +18,17 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Escuta mudanças no estado de autenticação do Firebase (Sintaxe V9)
+    // 🚨 Escuta mudanças no estado de autenticação do Firebase
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
     });
 
-    return unsubscribe; 
+    return unsubscribe;
   }, []);
 
   const value = { user, loading };

@@ -1,59 +1,83 @@
-// app/_layout.tsx (Coração da navegação)
+// app/(tabs)/_layout.tsx (CÓDIGO COMPLETO E CORRIGIDO)
 
-import { router, SplashScreen, Stack } from 'expo-router';
-import React, { useEffect } from 'react';
-import { Text, View } from 'react-native';
-import { AuthProvider, useAuth } from '../../components/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from 'expo-router';
+import React from 'react';
+import { useAuth } from '../../components/AuthContext'; // Importe o useAuth se precisar do logout aqui
 
-// O Layout que gerencia o redirecionamento
-function InitialLayout() {
-  const { user, loading } = useAuth();
-
-  // Esconde a tela de splash até que o estado de login seja resolvido
-  useEffect(() => {
-    if (!loading) {
-      SplashScreen.hideAsync();
-      
-      // Se o usuário existir, vai para as abas. Se não, vai para a tela de login.
-      if (user) {
-        // Redireciona para o grupo de abas
-        router.replace('/(tabs)/index'); 
-      } else {
-        // Redireciona para o grupo de autenticação
-        router.replace('/auth/login'); 
-      }
-    }
-  }, [user, loading]);
-
-  // Enquanto o estado de login não é resolvido, não renderiza nada
-  if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Iniciando...</Text></View>;
-  }
-  
-  // O Stack é o que o Expo Router renderiza.
-  return (
-    <Stack>
-      {/* 1. Rota de Autenticação (auth) */}
-      <Stack.Screen name="auth" options={{ headerShown: false }} /> 
-
-      {/* 2. Grupo de Abas (tabs) */}
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-
-      {/* 3. Modal (que abre de qualquer lugar) */}
-      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Registrar Ciclo' }} /> 
-      
-      <Stack.Screen name="+not-found" />
-    </Stack>
-  );
+// 🚨 Componente Auxiliar para o Ícone
+function TabBarIcon(props: {
+  name: React.ComponentProps<typeof Ionicons>['name'];
+  color: string;
+}) {
+  return <Ionicons size={28} style={{ marginBottom: -3 }} {...props} />;
 }
 
-// Exporta o Contexto para envolver todo o app
-export default function RootLayout() {
-  // ⚠️ Garante que o SplashScreen esteja visível até o Contexto carregar
-  SplashScreen.preventAutoHideAsync(); 
+export default function TabLayout() {
+  const { user } = useAuth(); // Se o botão de Logout estiver em 'settings'
+
+  // As cores são frequentemente definidas com base no tema do seu app
+  const PRIMARY_COLOR = '#E91E63'; 
+  const ACCENT_COLOR = '#00A86B'; 
+
   return (
-    <AuthProvider>
-      <InitialLayout />
-    </AuthProvider>
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: PRIMARY_COLOR,
+        // Garante que o cabeçalho seja visível e tenha o nome do grupo de abas
+        headerShown: true,
+        tabBarStyle: {
+            // Estilo da barra de abas
+            backgroundColor: '#FFFFFF',
+            borderTopColor: '#F0F0F0',
+        }
+      }}
+    >
+      {/* 1. ABA PADRÃO (index.tsx) */}
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color }) => <TabBarIcon name="home-outline" color={color} />,
+          headerTitle: 'Bem-vinda(o)!',
+        }}
+      />
+      
+      {/* 2. ABA DE CICLOS (cycles.tsx) */}
+      <Tabs.Screen
+        name="cycles"
+        options={{
+          title: 'Ciclos',
+          tabBarIcon: ({ color }) => <TabBarIcon name="calendar-outline" color={color} />,
+          headerTitle: 'Meu Calendário',
+        }}
+      />
+
+      {/* 3. ABA DE CONFIGURAÇÕES (settings.tsx) */}
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Ajustes',
+          tabBarIcon: ({ color }) => <TabBarIcon name="settings-outline" color={color} />,
+          // O botão de Logout pode ser adicionado ao cabeçalho aqui
+          headerRight: () => (
+            <Ionicons 
+                name="log-out-outline" 
+                size={24} 
+                color={PRIMARY_COLOR} 
+                style={{ marginRight: 15 }}
+                // Adicione a função de logout aqui se user.logout existir
+                // onPress={() => auth.signOut()} 
+            />
+          ),
+        }}
+      />
+      
+      {/* 🚨 CORREÇÃO: daily-log e modal não devem aparecer como abas */}
+      {/* Oculta arquivos que são modais ou auxiliares para que não apareçam na barra de abas */}
+      <Tabs.Screen name="daily-log" options={{ href: null }} />
+      <Tabs.Screen name="modal" options={{ href: null }} /> 
+      
+    </Tabs>
   );
 }
