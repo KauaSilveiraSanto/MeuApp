@@ -1,35 +1,59 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+// app/_layout.tsx (Coração da navegação)
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { router, SplashScreen, Stack } from 'expo-router';
+import React, { useEffect } from 'react';
+import { Text, View } from 'react-native';
+import { AuthProvider, useAuth } from '../../components/AuthContext';
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+// O Layout que gerencia o redirecionamento
+function InitialLayout() {
+  const { user, loading } = useAuth();
 
+  // Esconde a tela de splash até que o estado de login seja resolvido
+  useEffect(() => {
+    if (!loading) {
+      SplashScreen.hideAsync();
+      
+      // Se o usuário existir, vai para as abas. Se não, vai para a tela de login.
+      if (user) {
+        // Redireciona para o grupo de abas
+        router.replace('/(tabs)/index'); 
+      } else {
+        // Redireciona para o grupo de autenticação
+        router.replace('/auth/login'); 
+      }
+    }
+  }, [user, loading]);
+
+  // Enquanto o estado de login não é resolvido, não renderiza nada
+  if (loading) {
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text>Iniciando...</Text></View>;
+  }
+  
+  // O Stack é o que o Expo Router renderiza.
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
-    </Tabs>
+    <Stack>
+      {/* 1. Rota de Autenticação (auth) */}
+      <Stack.Screen name="auth" options={{ headerShown: false }} /> 
+
+      {/* 2. Grupo de Abas (tabs) */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+      {/* 3. Modal (que abre de qualquer lugar) */}
+      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Registrar Ciclo' }} /> 
+      
+      <Stack.Screen name="+not-found" />
+    </Stack>
+  );
+}
+
+// Exporta o Contexto para envolver todo o app
+export default function RootLayout() {
+  // ⚠️ Garante que o SplashScreen esteja visível até o Contexto carregar
+  SplashScreen.preventAutoHideAsync(); 
+  return (
+    <AuthProvider>
+      <InitialLayout />
+    </AuthProvider>
   );
 }

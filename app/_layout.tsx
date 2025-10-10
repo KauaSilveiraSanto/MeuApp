@@ -1,24 +1,51 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+// app/_layout.tsx (CÓDIGO COMPLETO E CORRIGIDO)
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { SplashScreen, Stack } from 'expo-router';
+import React, { useEffect } from 'react';
+import { View } from 'react-native'; // Importar View para a tela de loading
+import { AuthProvider, useAuth } from '../components/AuthContext';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+SplashScreen.preventAutoHideAsync(); 
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function InitialLayout() {
+  const { user, loading } = useAuth(); 
+  
+  // Esconde a tela de splash quando o estado de autenticação é resolvido
+  useEffect(() => {
+    if (!loading) {
+      SplashScreen.hideAsync();
+    }
+  }, [loading]);
+
+  if (loading) {
+    // Não renderiza nada enquanto carrega
+    return <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} />; 
+  }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+    <Stack>
+      {/* 🚨 DECISÃO DA ROTA: Se logado, vai para abas, senão, vai para autenticação */}
+      {user ? (
+        // Grupo (tabs) se o usuário estiver logado
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+      ) : (
+        // Grupo auth se o usuário não estiver logado
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+      )}
+
+      {/* Rota do Modal (acessível de qualquer lugar) */}
+      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Registrar Ciclo' }} /> 
+      
+      {/* Rota 404 de fallback */}
+      <Stack.Screen name="+not-found" />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <InitialLayout />
+    </AuthProvider>
   );
 }
