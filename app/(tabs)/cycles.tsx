@@ -1,110 +1,242 @@
-// app/(tabs)/cycles.tsx (CÓDIGO FINAL E COMPLETO)
-
 import { format } from 'date-fns';
-import { router } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Calendar } from 'react-native-calendars';
+import { ptBR } from 'date-fns/locale';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FirestoreServiceInstance } from '../../services/storage';
+import { Cycle } from '../../types/cycle';
 
-// 🚨 IMPORTAÇÕES DOS SERVIÇOS (Caminhos verificados)
-import { calculatePrediction } from '../../services/prediction';
-import { loadCycleDates } from '../../services/storage';
-import { CycleDate, CyclePrediction } from '../../types/cycle';
+const storage = FirestoreServiceInstance;
 
-// --- Configurações de Cores e Marcações (Mantenha o seu código aqui) ---
-const MARKING_COLORS = { 
-  period: { color: '#E91E63', textColor: 'white' },
-  fertile: { color: '#00A86B', textColor: 'white' },
-  ovulation: { color: '#FFC107', textColor: 'black' },
-}; 
+export default function CycleHistoryScreen() {
+    const [cycles, setCycles] = useState<Cycle[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
 
-// Função de Marcação (simplificada, use a sua versão completa se preferir)
-const markDateRange = (startDate: string, endDate: string, color: any, markedDates: { [key: string]: any }) => {
-  // ... lógica completa da sua função markDateRange
-  return markedDates;
-};
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const fetchedCycles = await storage.getAllCycles();
+            setCycles(fetchedCycles);
+        } catch (err) {
+            console.error("Erro ao carregar histórico de ciclos:", err);
+            const message = err instanceof Error ? err.message : "Não foi possível carregar seu histórico.";
+            setError(message);
+            Alert.alert("Erro", message);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
+    useFocusEffect(
+        useCallback(() => {
+            fetchData();
+        }, [fetchData])
+    );
 
-export default function CyclesScreen() {
-  const [cycleDates, setCycleDates] = useState<CycleDate[]>([]);
-  const [markedDates, setMarkedDates] = useState<{ [key: string]: any }>({});
-  const [loading, setLoading] = useState<boolean>(true);
-  const [prediction, setPrediction] = useState<CyclePrediction | null>(null);
-
-  // 🚨 CORREÇÃO: Usa useCallback para envolver a função fetch
-  const fetchCyclesAndPredict = useCallback(async () => {
-    setLoading(true);
-    try {
-      const dates = await loadCycleDates(); 
-      setCycleDates(dates);
-
-      if (dates.length > 0) {
-        const calculatedPrediction = calculatePrediction(dates); 
-        setPrediction(calculatedPrediction);
+    const calculateCycleDuration = useCallback((index: number) => {
+        if (index >= cycles.length - 1) return 'N/A';
         
-        // --- Lógica de Marcação ---
-        let newMarkedDates: { [key: string]: any } = {};
+        const currentCycle = new Date(cycles[index].startDate);
+        const previousCycle = new Date(cycles[index + 1].startDate);
+        
+        const diffTime = Math.abs(currentCycle.getTime() - previousCycle.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        return `${diffDays} dias`;
+    }, [cycles]);
 
-        // 1. Marca períodos passados (dates)
-        // ... (Use o seu código completo para marcar)
-
-        // 2. Marca a predição (fertile, ovulation, nextPeriod)
-        if (calculatedPrediction.nextPeriodStartDate) {
-            newMarkedDates = markDateRange(
-                calculatedPrediction.nextPeriodStartDate, 
-                format(new Date(), 'yyyy-MM-dd'), // Apenas um exemplo de uso
-                MARKING_COLORS.period, 
-                newMarkedDates
+    const renderContent = () => {
+        if (loading && cycles.length === 0) {
+            return (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#E91E63" />
+                    <Text style={styles.loadingText}>Carregando Histórico...</Text>
+                </View>
             );
         }
-        
-        setMarkedDates(newMarkedDates);
-      } else {
-        setPrediction(null);
-        setMarkedDates({});
-      }
 
-    } catch (error: any) { // 🚨 Usa 'error: any' para tipagem mais segura do catch
-      console.error("Erro ao carregar ciclos ou calcular predição:", error.message || error);
-      Alert.alert("Erro de Dados", "Não foi possível carregar os dados. Tente limpar o cache.");
-    } finally {
-      setLoading(false);
-    }
-  }, []); // 🚨 Dependências vazias - Opcional se for chamada apenas no useEffect
+        if (error && cycles.length === 0) {
+            return (
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <TouchableOpacity style={styles.mainButton} onPress={fetchData}>
+                        <Text style={styles.mainButtonText}>Tentar Novamente</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
 
-  useEffect(() => {
-    // 🚨 Apenas chama a função
-    fetchCyclesAndPredict(); 
-  }, [fetchCyclesAndPredict]); // 🚨 Inclui a função como dependência
+        if (cycles.length === 0) {
+            return (
+                <View style={styles.noDataContainer}>
+                    <Text style={styles.noDataText}>Nenhum ciclo registrado ainda.</Text>
+                    <TouchableOpacity style={styles.mainButton} onPress={() => router.push('/modal')}>
+                        <Text style={styles.mainButtonText}>Registrar Primeiro Ciclo ➕</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
 
-  if (loading) {
-    return <View style={styles.container}><Text>Carregando dados...</Text></View>;
-  }
+        return (
+            cycles.map((cycle, index) => (
+                <View key={cycle.id} style={styles.cycleCard}>
+                    <View style={styles.cardHeader}>
+                        <Text style={styles.cardTitle}>Ciclo #{cycles.length - index}</Text>
+                        <Text style={styles.cardDuration}>{calculateCycleDuration(index)}</Text>
+                    </View>
+                    <Text style={styles.cardDetail}>
+                        <Text style={styles.label}>Início:</Text> {format(new Date(cycle.startDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    </Text>
+                    <Text style={styles.cardDetail}>
+                        <Text style={styles.label}>Duração do Fluxo:</Text> {cycle.flowDurationDays} dias
+                    </Text>
+                </View>
+            ))
+        );
+    };
 
-  return (
-    <ScrollView style={styles.scrollView}>
-      <View style={styles.container}>
-        <Text style={styles.predictionText}>
-            Próximo Ciclo: {prediction?.nextPeriodStartDate || 'Sem Previsão'}
-        </Text>
-        
-        <Calendar
-          // ... (Propriedades do Calendar)
-          markedDates={markedDates}
-        />
-        
-        <TouchableOpacity style={styles.button} onPress={() => router.push('/modal')}>
-          <Text style={styles.buttonText}>Registrar Novo Ciclo</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-  );
+    return (
+        <View style={styles.container}>
+            <View style={styles.header}>
+                <Text style={styles.title}>Histórico de Ciclos</Text>
+                <TouchableOpacity style={styles.addButton} onPress={() => router.push('/modal')}>
+                    <Text style={styles.addButtonText}>+</Text>
+                </TouchableOpacity>
+            </View>
+            <ScrollView
+                contentContainerStyle={styles.listContainer}
+                refreshControl={
+                    <RefreshControl refreshing={loading} onRefresh={fetchData} colors={["#E91E63"]} />
+                }
+            >
+                {renderContent()}
+            </ScrollView>
+        </View>
+    );
 }
 
 const styles = StyleSheet.create({
-  scrollView: { flex: 1, backgroundColor: '#F7F2F6' },
-  container: { flex: 1, padding: 20 },
-  predictionText: { fontSize: 18, fontWeight: 'bold', color: '#E91E63', marginBottom: 15, textAlign: 'center' },
-  button: { width: '100%', height: 50, backgroundColor: '#00A86B', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginTop: 20 },
-  buttonText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
+    container: { 
+        flex: 1, 
+        backgroundColor: '#F7F2F6' 
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 10,
+    },
+    title: { 
+        fontSize: 28, 
+        fontWeight: 'bold', 
+        color: '#E91E63', 
+    },
+    addButton: {
+        backgroundColor: '#E91E63',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    addButtonText: {
+        color: '#FFFFFF',
+        fontSize: 24,
+        fontWeight: 'bold',
+    },
+    listContainer: { 
+        padding: 20,
+    },
+    loadingContainer: { 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        paddingTop: 100,
+    },
+    loadingText: { 
+        marginTop: 10, 
+        color: '#333' 
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+        paddingTop: 100,
+    },
+    errorText: {
+        fontSize: 16,
+        color: '#E91E63',
+        textAlign: 'center',
+        marginBottom: 20
+    },
+    noDataContainer: { 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        padding: 20, 
+        paddingTop: 100 
+    },
+    noDataText: { 
+        fontSize: 18, 
+        color: '#777', 
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    cycleCard: { 
+        backgroundColor: '#FFFFFF', 
+        padding: 15, 
+        borderRadius: 10, 
+        marginBottom: 15, 
+        elevation: 2, 
+        shadowOpacity: 0.1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowRadius: 3,
+    },
+    cardHeader: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#EEE', 
+        paddingBottom: 10, 
+        marginBottom: 10 
+    },
+    cardTitle: { 
+        fontSize: 18, 
+        fontWeight: 'bold', 
+        color: '#00A86B' 
+    },
+    cardDuration: { 
+        fontSize: 16, 
+        fontWeight: '600', 
+        color: '#333' 
+    },
+    cardDetail: { 
+        fontSize: 16, 
+        color: '#555', 
+        lineHeight: 24 
+    },
+    label: { 
+        fontWeight: 'bold', 
+        color: '#E91E63' 
+    },
+    mainButton: { 
+        backgroundColor: '#E91E63', 
+        paddingHorizontal: 30, 
+        paddingVertical: 15, 
+        borderRadius: 50, 
+        marginTop: 20, 
+        elevation: 3, 
+    },
+    mainButtonText: { 
+        color: '#FFFFFF', 
+        fontSize: 18, 
+        fontWeight: 'bold' 
+    },
 });

@@ -1,40 +1,77 @@
 // components/AuthContext.tsx (Versão Final e Estável)
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-// IMPORTAÇÃO ESSENCIAL: onAuthStateChanged deve vir do 'firebase/auth'
-import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
-// 🚨 IMPORTAÇÃO CRÍTICA: O caminho é crucial
-import { auth } from './../services/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useState } from 'react';
 
-interface AuthContextType {
-  user: FirebaseUser | null; 
+
+export interface AuthContextType {
+  user: string | null;
   loading: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (email: string, password: string) => Promise<boolean>;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+export const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: false,
+  login: async () => false,
+  register: async () => false,
+  logout: () => {},
+});
 
-export const useAuth = () => {
-  return useContext(AuthContext);
-};
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  useEffect(() => {
-    // 🚨 Escuta mudanças no estado de autenticação do Firebase
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+  // Login local
+  const login = async (email: string, password: string): Promise<boolean> => {
+    setLoading(true);
+    try {
+      const usersRaw = await AsyncStorage.getItem('users');
+      const users = usersRaw ? JSON.parse(usersRaw) : {};
+      if (users[email] && users[email] === password) {
+        setUser(email);
+        setLoading(false);
+        return true;
+      }
       setLoading(false);
-    });
+      return false;
+    } catch {
+      setLoading(false);
+      return false;
+    }
+  };
 
-    return unsubscribe;
-  }, []);
+  // Cadastro local
+  const register = async (email: string, password: string): Promise<boolean> => {
+    setLoading(true);
+    try {
+      const usersRaw = await AsyncStorage.getItem('users');
+      const users = usersRaw ? JSON.parse(usersRaw) : {};
+      if (users[email]) {
+        setLoading(false);
+        return false; // Usuário já existe
+      }
+      users[email] = password;
+      await AsyncStorage.setItem('users', JSON.stringify(users));
+      setUser(email);
+      setLoading(false);
+      return true;
+    } catch {
+      setLoading(false);
+      return false;
+    }
+  };
 
-  const value = { user, loading };
+  const logout = () => {
+    setUser(null);
+  };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

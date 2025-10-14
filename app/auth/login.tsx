@@ -1,96 +1,100 @@
 // app/auth/login.tsx (CÓDIGO COMPLETO E CORRIGIDO)
 
 import { router } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-// Importação do Firebase para Login e da instância auth
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../services/firebase';
+import React, { useRef, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useAuth } from '../../components/AuthContext';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { login, loading } = useAuth();
+  const passwordRef = useRef<TextInput>(null);
 
   const handleLogin = async () => {
+    setError('');
     if (!email || !password) {
-      Alert.alert("Erro", "Preencha o email e a senha.");
+      setError('Preencha o email e a senha.');
       return;
     }
-
-    setLoading(true);
-
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // Se for bem-sucedido, o AuthContext detectará e fará o redirecionamento.
-      Alert.alert("Sucesso", "Login realizado com sucesso!");
-      // O replace é necessário para limpar o histórico e ir para as abas.
-      router.replace('/(tabs)'); 
-
-    } catch (error: any) {
-      console.error("Erro de Login:", error);
-
-      let errorMessage = "Ocorreu um erro no login. Verifique suas credenciais.";
-
-      // Mensagens de erro mais amigáveis (baseadas nos códigos do Firebase)
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = "Nenhum usuário encontrado com este email. Você precisa se cadastrar.";
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = "Senha incorreta.";
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = "O formato do email está incorreto.";
-      }
-      
-      Alert.alert("Erro de login", errorMessage);
-
-    } finally {
-      setLoading(false);
+    const success = await login(email.trim(), password);
+    if (success) {
+      Alert.alert('Sucesso', 'Login realizado!');
+      router.replace('/(tabs)');
+    } else {
+      setError('Email ou senha inválidos.');
     }
   };
 
-  // ... (AQUI DEVE TER O CÓDIGO JSX/UI da sua tela de login, que não foi enviado)
-  // Certifique-se de que seus botões e inputs chamem handleLogin, setEmail e setPassword.
+  const goToRegister = () => {
+    router.push('/auth/register');
+  };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.inner}>
         <Text style={styles.title}>Bem-vindo(a)!</Text>
-        <Text style={styles.subtitle}>Faça login para salvar seus dados na nuvem.</Text>
+        <Text style={styles.subtitle}>Faça login para acessar o app.</Text>
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          editable={!loading}
+          returnKeyType="next"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+          textContentType="username"
         />
 
         <TextInput
-            style={styles.input}
-            placeholder="Senha"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
+          ref={passwordRef}
+          style={styles.input}
+          placeholder="Senha"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!loading}
+          returnKeyType="done"
+          onSubmitEditing={handleLogin}
+          textContentType="password"
         />
-        
+
         <TouchableOpacity
-            style={styles.button}
-            onPress={handleLogin}
-            disabled={loading}
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading}
+          accessibilityLabel="Entrar"
         >
-            <Text style={styles.buttonText}>{loading ? "Aguarde..." : "Entrar"}</Text>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Entrar</Text>}
         </TouchableOpacity>
 
-        {/* Você pode adicionar um link para a tela de cadastro aqui */}
-    </View>
+        <TouchableOpacity style={styles.linkButton} onPress={goToRegister} accessibilityLabel="Ir para cadastro">
+          <Text style={styles.linkText}>Não tem conta? Cadastre-se</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#fff' },
-    title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
-    subtitle: { fontSize: 16, color: '#666', marginBottom: 30 },
-    input: { width: '100%', padding: 15, marginBottom: 10, borderWidth: 1, borderColor: '#ccc', borderRadius: 8 },
-    button: { backgroundColor: '#FF6F61', padding: 15, borderRadius: 8, width: '100%', alignItems: 'center', marginTop: 10 },
-    buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  container: { flex: 1, backgroundColor: '#fff', justifyContent: 'center' },
+  inner: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
+  subtitle: { fontSize: 16, color: '#666', marginBottom: 30 },
+  error: { color: 'red', marginBottom: 10, textAlign: 'center' },
+  input: { width: '100%', maxWidth: 400, padding: 15, marginBottom: 10, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, fontSize: 16 },
+  button: { backgroundColor: '#FF6F61', padding: 15, borderRadius: 8, width: '100%', maxWidth: 400, alignItems: 'center', marginTop: 10 },
+  buttonDisabled: { opacity: 0.7 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  linkButton: { marginTop: 20 },
+  linkText: { color: '#00A86B', fontSize: 16 },
 });

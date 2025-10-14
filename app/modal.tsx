@@ -1,134 +1,178 @@
-import { format } from 'date-fns';
-import { router, Stack } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Calendar } from 'react-native-calendars';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FirestoreServiceInstance } from '../services/storage';
+import { Cycle } from '../types/cycle';
 
-// ⚠️ IMPORTAÇÕES DOS SERVIÇOS
-import { loadCycleDates, saveCycleDates } from '../services/storage';
-import { CycleDate } from '../types/cycle';
+const storage = FirestoreServiceInstance;
 
-export default function Modal() {
-    // Estado para a data selecionada (string YYYY-MM-DD)
-    const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-    // Estado para a duração da menstruação
-    const [periodLength, setPeriodLength] = useState<string>('5'); 
-    const [isSaving, setIsSaving] = useState<boolean>(false);
+// Helper para obter a data de hoje no formato 'YYYY-MM-DD'
+const getTodayDateString = () => {
+    return new Date().toISOString().split('T')[0];
+};
 
-    // Marcação para a data selecionada no calendário
-    const markedDate = {
-        [selectedDate]: { selected: true, selectedColor: '#E91E63', disableTouchEvent: true }
-    };
+export default function CycleRegistrationModal() {
+    const router = useRouter();
+    const [startDate, setStartDate] = useState<string>(getTodayDateString());
+    const [flowDurationDays, setFlowDurationDays] = useState<number>(5);
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
-    // --- Lógica de Salvamento ---
-    const handleSaveCycle = async () => {
-        if (!selectedDate || isNaN(parseInt(periodLength)) || parseInt(periodLength) <= 0) {
-            Alert.alert("Erro", "Por favor, selecione uma data e insira uma duração válida para o período.");
+    const handleSave = useCallback(async () => {
+        setErrorMessage('');
+
+        if (!startDate || flowDurationDays <= 0) {
+            setErrorMessage('Por favor, preencha a data de início e a duração do fluxo.');
             return;
         }
 
-        setIsSaving(true);
+        const newCycle: Omit<Cycle, 'id' | 'userId'> = {
+            startDate,
+            flowDurationDays,
+        };
+
+        setIsLoading(true);
+
         try {
-            // 1. Cria o novo objeto CycleDate
-            const newCycle: CycleDate = {
-                date: selectedDate,
-                periodLength: parseInt(periodLength)
-            };
-
-            // 2. Carrega o histórico existente
-            const existingCycles = await loadCycleDates();
-
-            // 3. Verifica se a data já existe para evitar duplicatas
-            const filteredCycles = existingCycles.filter(
-                (cycle: CycleDate) => cycle.date !== newCycle.date
-            );
-
-            // 4. Adiciona o novo ciclo e salva
-            const updatedCycles = [...filteredCycles, newCycle];
-            await saveCycleDates(updatedCycles);
-
-            Alert.alert("Sucesso", "Ciclo registrado com sucesso!");
-            router.back(); // Volta para a tela principal (index/cycles)
+            await storage.addCycle(newCycle);
+            
+            Alert.alert('Sucesso!', 'Ciclo registrado com sucesso.');
+            
+            // Volta para a tela anterior após o sucesso
+            if (router.canGoBack()) {
+                router.back();
+            }
 
         } catch (error) {
-            console.error("Falha ao salvar o ciclo:", error);
-            Alert.alert("Erro", "Não foi possível salvar o registro. Tente novamente.");
+            console.error("Erro ao salvar o ciclo:", error);
+            const message = error instanceof Error ? error.message : 'Falha ao salvar o ciclo. Tente novamente.';
+            setErrorMessage(message);
+            Alert.alert('Erro', message);
         } finally {
-            setIsSaving(false);
+            setIsLoading(false);
         }
-    };
+    }, [startDate, flowDurationDays, router]);
 
     return (
         <View style={styles.container}>
-            {/* O Stack.Screen permite configurar o modal (como o título) */}
-            <Stack.Screen options={{ title: 'Registrar Novo Ciclo' }} />
-            
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                <Text style={styles.header}>Início do Último Ciclo</Text>
-                <Text style={styles.instructionText}>Selecione o primeiro dia da sua última menstruação.</Text>
-                
-                {/* 1. SELETOR DE DATA (Calendário) */}
-                <Calendar
-                    onDayPress={(day) => {
-                        setSelectedDate(day.dateString);
-                    }}
-                    markedDates={markedDate}
-                    theme={{
-                        selectedDayBackgroundColor: '#E91E63',
-                        todayTextColor: '#00A86B',
-                        arrowColor: '#E91E63',
-                        indicatorColor: '#E91E63',
-                    }}
-                    style={styles.calendar}
-                />
+            <View style={styles.modalView}>
+                <Text style={styles.modalTitle}>Novo Registro de Ciclo</Text>
 
-                {/* 2. DURAÇÃO DO PERÍODO */}
-                <Text style={[styles.header, { marginTop: 30 }]}>Duração da Menstruação (dias)</Text>
-                <Text style={styles.instructionText}>Quantos dias dura sua menstruação tipicamente?</Text>
-                
-                <TextInput
-                    style={styles.input}
-                    onChangeText={setPeriodLength}
-                    value={periodLength}
-                    keyboardType="numeric"
-                    placeholder="Ex: 5"
-                    editable={!isSaving}
-                />
+                {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-                {/* 3. BOTÃO DE SALVAMENTO */}
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Data de Início do Fluxo</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={startDate}
+                        onChangeText={setStartDate}
+                        placeholder="YYYY-MM-DD"
+                        maxLength={10}
+                        keyboardType="numeric"
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Duração do Fluxo (dias)</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={String(flowDurationDays)}
+                        onChangeText={(text) => setFlowDurationDays(parseInt(text) || 0)}
+                        keyboardType="number-pad"
+                    />
+                </View>
+
                 <TouchableOpacity
-                    style={styles.saveButton}
-                    onPress={handleSaveCycle}
-                    disabled={isSaving}
+                    style={[styles.button, styles.buttonSave]}
+                    onPress={handleSave}
+                    disabled={isLoading}
                 >
-                    <Text style={styles.saveButtonText}>
-                        {isSaving ? 'Salvando...' : 'Salvar Ciclo'}
-                    </Text>
+                    {isLoading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text style={styles.buttonText}>Salvar Registro</Text>
+                    )}
                 </TouchableOpacity>
-                
-                {/* 4. BOTÃO DE CANCELAR */}
+
                 <TouchableOpacity
-                    style={styles.cancelButton}
+                    style={[styles.button, styles.buttonClose]}
                     onPress={() => router.back()}
-                    disabled={isSaving}
+                    disabled={isLoading}
                 >
-                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                    <Text style={styles.buttonText}>Fechar</Text>
                 </TouchableOpacity>
-
-            </ScrollView>
+            </View>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F7F2F6' },
-    scrollContent: { padding: 20, alignItems: 'center' },
-    header: { fontSize: 22, fontWeight: 'bold', color: '#333', marginTop: 10 },
-    instructionText: { fontSize: 14, color: '#777', marginBottom: 15, textAlign: 'center' },
-    calendar: { width: '100%', borderRadius: 10, elevation: 3, shadowOpacity: 0.1, backgroundColor: '#FFFFFF' },
-    input: { width: '100%', height: 50, borderColor: '#ccc', borderWidth: 1, borderRadius: 8, paddingHorizontal: 15, fontSize: 18, backgroundColor: '#FFFFFF', marginTop: 10, textAlign: 'center' },
-    saveButton: { width: '100%', backgroundColor: '#00A86B', padding: 15, borderRadius: 50, marginTop: 40, elevation: 3 },
-    saveButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
-    cancelButton: { width: '100%', padding: 10, borderRadius: 50, marginTop: 15, },
-    cancelButtonText: { color: '#E91E63', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
+    container: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalView: {
+        width: '90%',
+        backgroundColor: 'white',
+        borderRadius: 20,
+        padding: 25,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    modalTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        marginBottom: 20,
+        color: '#333',
+    },
+    inputGroup: {
+        width: '100%',
+        marginBottom: 15,
+    },
+    label: {
+        fontSize: 16,
+        color: '#666',
+        marginBottom: 5,
+    },
+    input: {
+        width: '100%',
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 8,
+        fontSize: 16,
+    },
+    button: {
+        borderRadius: 20,
+        padding: 12,
+        elevation: 2,
+        width: '100%',
+        marginTop: 10,
+        alignItems: 'center',
+    },
+    buttonSave: {
+        backgroundColor: '#E91E63',
+    },
+    buttonClose: {
+        backgroundColor: '#757575',
+    },
+    buttonText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    errorText: {
+        color: 'red',
+        marginBottom: 10,
+        textAlign: 'center',
+    },
 });

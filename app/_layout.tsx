@@ -1,31 +1,42 @@
 // app/_layout.tsx (COMPLETO E CORRIGIDO)
 
 import { router, SplashScreen, Stack } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { AuthProvider, useAuth } from '../components/AuthContext';
 
 // O Layout que gerencia o redirecionamento
 function InitialLayout() {
   const { user, loading } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [redirected, setRedirected] = useState(false);
 
   useEffect(() => {
-    // Esconde a tela de splash até que o estado de login seja resolvido
-    if (!loading) {
-        SplashScreen.hideAsync();
+    if (!loading && !redirected) {
+      SplashScreen.hideAsync();
+      try {
+        if (user) {
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/auth/login');
+        }
+        setRedirected(true);
+      } catch (e: any) {
+        setError(e?.message || 'Erro desconhecido na inicialização.');
+      }
     }
+  }, [user, loading, redirected]);
 
-    // Se o usuário existir, vai para as abas. Se não, vai para a tela de login.
-    if (user) {
-      // Redireciona para o grupo de abas
-      router.replace('/(tabs)');
-    } else if (!loading) {
-      // Redireciona para o grupo de autenticação
-      router.replace('/auth/login');
-    }
-  }, [user, loading]);
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 }}>
+        <Text style={{ color: 'red', fontSize: 18, textAlign: 'center' }}>Erro ao iniciar o app:</Text>
+        <Text style={{ color: 'red', marginTop: 10, textAlign: 'center' }}>{error}</Text>
+        <Text style={{ marginTop: 30, color: '#333', textAlign: 'center' }}>Tente fechar e abrir o app novamente.</Text>
+      </View>
+    );
+  }
 
-  // Enquanto o estado de login não é resolvido, não renderiza nada
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
