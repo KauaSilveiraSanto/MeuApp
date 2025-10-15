@@ -21,7 +21,9 @@ export default function LoginScreen() {
     const success = await login(email.trim(), password);
     if (success) {
       Alert.alert('Sucesso', 'Login realizado!');
-      router.replace('/(tabs)');
+      // REMOVIDO: A navegação agora é gerenciada de forma declarativa
+      // pelo layout `app/auth/_layout.tsx`, que detectará a mudança no
+      // estado `user` e fará o redirecionamento.
     } else {
       setError('Email ou senha inválidos.');
     }

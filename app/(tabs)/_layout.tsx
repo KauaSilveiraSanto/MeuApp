@@ -1,9 +1,10 @@
-// app/(tabs)/_layout.tsx (CÓDIGO COMPLETO E CORRIGIDO)
+// app/(tabs)/_layout.tsx 
 
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
-import { useAuth } from '../../components/AuthContext'; // Importe o useAuth se precisar do logout aqui
+import { useAuth } from '../../components/AuthContext';
+
 
 // 🚨 Componente Auxiliar para o Ícone
 function TabBarIcon(props: {
@@ -14,11 +15,20 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const { user } = useAuth(); // Se o botão de Logout estiver em 'settings'
+  const { user, loading } = useAuth(); 
 
-  // As cores são frequentemente definidas com base no tema do seu app
+  // Se o estado de autenticação ainda está carregando, não renderize nada para evitar "flicker".
+  if (loading) {
+    return null; // Ou um componente de loading.
+  }
+  
   const PRIMARY_COLOR = '#E91E63'; 
   const ACCENT_COLOR = '#00A86B'; 
+
+  // Esta é a "guarda de rota". Se não houver usuário, redireciona para a tela de login.
+  if (!user) {
+    return <Redirect href="/auth/login" />;
+  }
 
   return (
     <Tabs
@@ -27,7 +37,7 @@ export default function TabLayout() {
         // Garante que o cabeçalho seja visível e tenha o nome do grupo de abas
         headerShown: true,
         tabBarStyle: {
-            // Estilo da barra de abas
+           
             backgroundColor: '#FFFFFF',
             borderTopColor: '#F0F0F0',
         }
