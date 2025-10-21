@@ -1,5 +1,5 @@
 import { addDays, differenceInDays } from 'date-fns';
-import { Cycle } from '../types/cycle';
+import { Cycle } from '../services/sqlite';
 
 /**
  * Interfaces para as estruturas de dados de saída.
@@ -33,40 +33,36 @@ const LUTEAL_PHASE_LENGTH = 14; // A fase lútea é relativamente constante
  * @returns Um objeto com as estatísticas calculadas.
  */
 export const calculateStats = (cycles: Cycle[]): CycleStats => {
-    if (cycles.length === 0) {
+    // We need at least one cycle to calculate flow duration, and two for cycle length.
+    const cycleCount = cycles.length;
+
+    if (cycleCount === 0) {
         return { averageCycleLength: DEFAULT_CYCLE_LENGTH, averageFlowDuration: DEFAULT_FLOW_DURATION, cycleCount: 0 };
     }
 
-    const totalFlowDuration = cycles.reduce((sum, cycle) => sum + cycle.flowDurationDays, 0);
-    const averageFlowDuration = Math.round(totalFlowDuration / cycles.length);
+    const averageFlowDuration = DEFAULT_FLOW_DURATION;
 
-    // Para calcular a duração do ciclo, precisamos de pelo menos dois ciclos.
-    if (cycles.length < 2) {
-        return { averageCycleLength: DEFAULT_CYCLE_LENGTH, averageFlowDuration, cycleCount: cycles.length };
-    }
-
-    let totalCycleLength = 0;
-    // Itera do segundo ciclo mais recente até o mais antigo para calcular as durações
-    for (let i = 0; i < cycles.length - 1; i++) {
-        const currentCycleStartDate = new Date(cycles[i].startDate);
-        const previousCycleStartDate = new Date(cycles[i + 1].startDate);
-        const cycleLength = differenceInDays(currentCycleStartDate, previousCycleStartDate);
-        
-        // Ignora durações de ciclo irrealistas
-        if (cycleLength > 15 && cycleLength < 45) {
-            totalCycleLength += cycleLength;
+    const cycleLengths: number[] = [];
+    // Itera sobre os ciclos que têm uma data de início e de fim para calcular a duração real.
+    cycles.forEach(cycle => {
+        if (cycle.endDate) {
+            const length = differenceInDays(new Date(cycle.endDate), new Date(cycle.startDate)) + 1;
+            // Filtra durações de ciclo irrealistas para estatísticas mais precisas.
+            if (length > 15 && length < 60) {
+                cycleLengths.push(length);
+            }
         }
-    }
+    });
 
-    const validCycleCount = cycles.length - 1;
-    const averageCycleLength = validCycleCount > 0 
-        ? Math.round(totalCycleLength / validCycleCount) 
+    // Calcula a média se houver durações válidas, senão usa o padrão.
+    const averageCycleLength = cycleLengths.length > 0
+        ? Math.round(cycleLengths.reduce((sum, len) => sum + len, 0) / cycleLengths.length)
         : DEFAULT_CYCLE_LENGTH;
 
     return {
         averageCycleLength: averageCycleLength || DEFAULT_CYCLE_LENGTH,
         averageFlowDuration: averageFlowDuration || DEFAULT_FLOW_DURATION,
-        cycleCount: cycles.length,
+        cycleCount,
     };
 };
 
@@ -99,7 +95,7 @@ export const predictNextCycle = (latestCycle: Cycle, stats: CycleStats): CyclePr
  * @param prediction - A previsão para o próximo ciclo.
  * @returns Informações sobre o estado atual do ciclo.
  */
-export const getCurrentCycleInfo = (latestCycle: Cycle, prediction: CyclePrediction): CurrentCycleInfo => {
+export const getCurrentCycleInfo = (latestCycle: Cycle, prediction: CyclePrediction, stats: CycleStats): CurrentCycleInfo => {
     const today = new Date();
     const lastStartDate = new Date(latestCycle.startDate);
     
@@ -108,7 +104,8 @@ export const getCurrentCycleInfo = (latestCycle: Cycle, prediction: CyclePredict
 
     let currentPhase: CurrentCycleInfo['currentPhase'] = 'desconhecida';
 
-    if (currentDay <= latestCycle.flowDurationDays) {
+    const flowDuration = stats.averageFlowDuration || DEFAULT_FLOW_DURATION;
+    if (currentDay <= flowDuration) {
         currentPhase = 'menstrual';
     } else if (today >= prediction.fertileWindowStart && today <= prediction.fertileWindowEnd) {
         // A ovulação está dentro da janela fértil
@@ -117,7 +114,7 @@ export const getCurrentCycleInfo = (latestCycle: Cycle, prediction: CyclePredict
         } else {
             currentPhase = 'folicular'; // Fase antes da ovulação
         }
-    } else if (currentDay > latestCycle.flowDurationDays && today < prediction.fertileWindowStart) {
+    } else if (currentDay > flowDuration && today < prediction.fertileWindowStart) {
         currentPhase = 'folicular';
     } else if (today > prediction.ovulationDate && today < prediction.nextPeriodStartDate) {
         currentPhase = 'lútea';

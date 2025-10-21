@@ -1,242 +1,200 @@
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { FirestoreServiceInstance } from '../../services/storage';
-import { Cycle } from '../../types/cycle';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
+import { useAuth } from '../../components/AuthContext';
+import { Cycle } from '../../services/sqlite';
+import { DatabaseService } from '../../services/storage';
+import { API_BASE_URL } from '../../src/config/api';
 
-const storage = FirestoreServiceInstance;
+// --- Configuração de Localização para o Calendário ---
+LocaleConfig.locales['pt-br'] = {
+    monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
+    monthNamesShort: ['Jan.', 'Fev.', 'Mar.', 'Abr.', 'Mai.', 'Jun.', 'Jul.', 'Ago.', 'Set.', 'Out.', 'Nov.', 'Dez.'],
+    dayNames: ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
+    dayNamesShort: ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'],
+    today: "Hoje"
+};
+LocaleConfig.defaultLocale = 'pt-br';
 
-export default function CycleHistoryScreen() {
-    const [cycles, setCycles] = useState<Cycle[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
+// --- Constantes de Estilo ---
+const PRIMARY_COLOR = '#E91E63';
+const CYCLE_START_COLOR = '#FF6F61'; // Coral for cycle start
+const MARKED_DOT_COLOR = '#5D3FD3'; // Roxo para os pontos
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const fetchedCycles = await storage.getAllCycles();
-            setCycles(fetchedCycles);
-        } catch (err) {
-            console.error("Erro ao carregar histórico de ciclos:", err);
-            const message = err instanceof Error ? err.message : "Não foi possível carregar seu histórico.";
-            setError(message);
-            Alert.alert("Erro", message);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+export default function CyclesScreen() {
+    const router = useRouter();
+    const { user } = useAuth(); // Pega o usuário logado
+    const [markedDates, setMarkedDates] = useState<{ [key: string]: any }>({});
+    const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7)); // Formato 'YYYY-MM'
+    const [isLoading, setIsLoading] = useState(true);
+    // Esta é a sua função para o botão "onPress"
+const handleSalvarCiclo = async () => {
+  // 1. Pegue os dados da sua tela (de um 'useState', por exemplo)
+  // Vou simular os dados por enquanto:
+  const dadosDoCiclo = {
+    data_inicio: new Date(), // Pega a data de hoje
+    observacoes: "Ciclo salvo pelo app!"
+    // nota: data_fim é opcional, então não precisamos enviar
+  };
 
+  console.log('Enviando dados para a API:', dadosDoCiclo);
+
+  try {
+    // 2. A chamada FETCH (aqui é a mágica!)
+    const resposta = await fetch(`${API_BASE_URL}/ciclos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(dadosDoCiclo), // Transforma o objeto JS em texto JSON
+    });
+
+    // 3. Checar se a requisição deu certo
+    if (!resposta.ok) {
+      // Se o servidor deu um erro (ex: 400, 500), ele entra aqui
+      throw new Error('Falha ao salvar no servidor. Status: ' + resposta.status);
+    }
+
+    // 4. Pegar a resposta do servidor (o ciclo que foi criado)
+    const cicloSalvo = await resposta.json();
+
+    console.log('Ciclo salvo com sucesso no banco de dados:', cicloSalvo);
+    alert('Ciclo salvo com sucesso!');
+
+  } catch (error) {
+    // 5. Lidar com erros de rede ou da API
+    console.error('Erro ao salvar ciclo:', error);
+    alert('Erro ao salvar: ' + error.message);
+  }
+};
+
+    // Hook para buscar dados quando a tela é focada ou o mês muda
     useFocusEffect(
         useCallback(() => {
+            const fetchData = async () => {
+                setIsLoading(true);
+                try {
+                    // Requisito Chave: Garante que só buscamos dados se tivermos um ID de usuário.
+                    if (!user?.id) {
+                        throw new Error("ID do usuário não encontrado. Não é possível buscar os dados.");
+                    }
+
+                    // Calcula o primeiro e o último dia do mês corrente
+                    const year = parseInt(currentMonth.slice(0, 4));
+                    const month = parseInt(currentMonth.slice(5, 7));
+                    const startDate = `${currentMonth}-01`;
+                    const endDate = new Date(year, month, 0).toISOString().slice(0, 10);
+
+                    // Fetch both daily logs and cycle starts
+                    const [logs, cycles] = await Promise.all([
+                        DatabaseService.getLogsForPeriod(user.id, startDate, endDate),
+                        DatabaseService.getAllCycles(user.id)
+                    ]);
+
+                    // Transforma os logs no formato esperado pelo componente Calendar
+                    const newMarkedDates: { [key: string]: any } = {};
+
+                    // 1. Mark daily logs with a dot
+                    logs.forEach(log => {
+                        if (log.date) {
+                            newMarkedDates[log.date] = {
+                                dots: [{ key: 'log', color: MARKED_DOT_COLOR }],
+                            };
+                        }
+                    });
+
+                    // 2. Mark cycle start dates with a selected background
+                    // This will merge with any existing dots
+                    cycles.forEach((cycle: Cycle) => {
+                        if (cycle.startDate >= startDate && cycle.startDate <= endDate) {
+                            const existingMarking = newMarkedDates[cycle.startDate] || {};
+                            newMarkedDates[cycle.startDate] = {
+                                ...existingMarking,
+                                selected: true,
+                                selectedColor: CYCLE_START_COLOR,
+                            };
+                        }
+                    });
+
+                    setMarkedDates(newMarkedDates);
+                } catch (error) {
+                    console.error("Erro ao buscar logs para o calendário:", error);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
             fetchData();
-        }, [fetchData])
+        }, [currentMonth, user?.id]) // O efeito é re-executado quando o mês ou o usuário muda
     );
 
-    const calculateCycleDuration = useCallback((index: number) => {
-        if (index >= cycles.length - 1) return 'N/A';
-        
-        const currentCycle = new Date(cycles[index].startDate);
-        const previousCycle = new Date(cycles[index + 1].startDate);
-        
-        const diffTime = Math.abs(currentCycle.getTime() - previousCycle.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        return `${diffDays} dias`;
-    }, [cycles]);
+    // Navega para a tela de modal ao pressionar um dia
+    const onDayPress = (day: DateData) => {
+        router.push({
+            pathname: '/modal',
+            params: { date: day.dateString } // Passa a data selecionada
+        });
+    };
 
-    const renderContent = () => {
-        if (loading && cycles.length === 0) {
-            return (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#E91E63" />
-                    <Text style={styles.loadingText}>Carregando Histórico...</Text>
-                </View>
-            );
-        }
-
-        if (error && cycles.length === 0) {
-            return (
-                <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                    <TouchableOpacity style={styles.mainButton} onPress={fetchData}>
-                        <Text style={styles.mainButtonText}>Tentar Novamente</Text>
-                    </TouchableOpacity>
-                </View>
-            );
-        }
-
-        if (cycles.length === 0) {
-            return (
-                <View style={styles.noDataContainer}>
-                    <Text style={styles.noDataText}>Nenhum ciclo registrado ainda.</Text>
-                    <TouchableOpacity style={styles.mainButton} onPress={() => router.push('/modal')}>
-                        <Text style={styles.mainButtonText}>Registrar Primeiro Ciclo ➕</Text>
-                    </TouchableOpacity>
-                </View>
-            );
-        }
-
-        return (
-            cycles.map((cycle, index) => (
-                <View key={cycle.id} style={styles.cycleCard}>
-                    <View style={styles.cardHeader}>
-                        <Text style={styles.cardTitle}>Ciclo #{cycles.length - index}</Text>
-                        <Text style={styles.cardDuration}>{calculateCycleDuration(index)}</Text>
-                    </View>
-                    <Text style={styles.cardDetail}>
-                        <Text style={styles.label}>Início:</Text> {format(new Date(cycle.startDate), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                    </Text>
-                    <Text style={styles.cardDetail}>
-                        <Text style={styles.label}>Duração do Fluxo:</Text> {cycle.flowDurationDays} dias
-                    </Text>
-                </View>
-            ))
-        );
+    // Atualiza o estado do mês atual quando o usuário navega no calendário
+    const onMonthChange = (month: DateData) => {
+        setCurrentMonth(month.dateString.slice(0, 7));
     };
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.title}>Histórico de Ciclos</Text>
-                <TouchableOpacity style={styles.addButton} onPress={() => router.push('/modal')}>
-                    <Text style={styles.addButtonText}>+</Text>
-                </TouchableOpacity>
+            <Text style={styles.title}>Meu Calendário</Text>
+            <Text style={styles.subtitle}>
+                Selecione um dia para registrar seus sintomas e notas.
+            </Text>
+            {isLoading && <ActivityIndicator style={styles.loader} size="small" color={PRIMARY_COLOR} />}
+            <Calendar
+                style={styles.calendar}
+                current={currentMonth}
+                onDayPress={onDayPress}
+                onMonthChange={onMonthChange}
+                markedDates={markedDates}
+                // Use 'multi-dot' to allow combining a selected day with dots
+                markingType="multi-dot"
+                theme={{
+                    calendarBackground: '#FFFFFF',
+                    selectedDayBackgroundColor: PRIMARY_COLOR,
+                    todayTextColor: PRIMARY_COLOR,
+                    arrowColor: PRIMARY_COLOR,
+                    textSectionTitleColor: '#b6c1cd',
+                    textDayFontWeight: '500',
+                    textMonthFontWeight: 'bold',
+                    textDayHeaderFontWeight: '500',
+                    textDayFontSize: 16,
+                    textMonthFontSize: 18,
+                    textDayHeaderFontSize: 14,
+                }}
+            />
+            <View style={styles.legendContainer}>
+                <View style={styles.legendItem}>
+                    <View style={[styles.legendIndicator, { backgroundColor: CYCLE_START_COLOR }]} />
+                    <Text style={styles.legendText}>Início do Ciclo</Text>
+                </View>
+                <View style={styles.legendItem}>
+                    <View style={[styles.legendIndicator, {
+                        backgroundColor: MARKED_DOT_COLOR, borderRadius: 5, width: 10, height: 10, alignSelf: 'center'
+                    }]} />
+                    <Text style={styles.legendText}>Log Diário</Text>
+                </View>
             </View>
-            <ScrollView
-                contentContainerStyle={styles.listContainer}
-                refreshControl={
-                    <RefreshControl refreshing={loading} onRefresh={fetchData} colors={["#E91E63"]} />
-                }
-            >
-                {renderContent()}
-            </ScrollView>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { 
-        flex: 1, 
-        backgroundColor: '#F7F2F6' 
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingTop: 20,
-        paddingBottom: 10,
-    },
-    title: { 
-        fontSize: 28, 
-        fontWeight: 'bold', 
-        color: '#E91E63', 
-    },
-    addButton: {
-        backgroundColor: '#E91E63',
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    addButtonText: {
-        color: '#FFFFFF',
-        fontSize: 24,
-        fontWeight: 'bold',
-    },
-    listContainer: { 
-        padding: 20,
-    },
-    loadingContainer: { 
-        flex: 1, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        paddingTop: 100,
-    },
-    loadingText: { 
-        marginTop: 10, 
-        color: '#333' 
-    },
-    errorContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-        paddingTop: 100,
-    },
-    errorText: {
-        fontSize: 16,
-        color: '#E91E63',
-        textAlign: 'center',
-        marginBottom: 20
-    },
-    noDataContainer: { 
-        flex: 1, 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        padding: 20, 
-        paddingTop: 100 
-    },
-    noDataText: { 
-        fontSize: 18, 
-        color: '#777', 
-        marginBottom: 20,
-        textAlign: 'center',
-    },
-    cycleCard: { 
-        backgroundColor: '#FFFFFF', 
-        padding: 15, 
-        borderRadius: 10, 
-        marginBottom: 15, 
-        elevation: 2, 
-        shadowOpacity: 0.1,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowRadius: 3,
-    },
-    cardHeader: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        borderBottomWidth: 1, 
-        borderBottomColor: '#EEE', 
-        paddingBottom: 10, 
-        marginBottom: 10 
-    },
-    cardTitle: { 
-        fontSize: 18, 
-        fontWeight: 'bold', 
-        color: '#00A86B' 
-    },
-    cardDuration: { 
-        fontSize: 16, 
-        fontWeight: '600', 
-        color: '#333' 
-    },
-    cardDetail: { 
-        fontSize: 16, 
-        color: '#555', 
-        lineHeight: 24 
-    },
-    label: { 
-        fontWeight: 'bold', 
-        color: '#E91E63' 
-    },
-    mainButton: { 
-        backgroundColor: '#E91E63', 
-        paddingHorizontal: 30, 
-        paddingVertical: 15, 
-        borderRadius: 50, 
-        marginTop: 20, 
-        elevation: 3, 
-    },
-    mainButtonText: { 
-        color: '#FFFFFF', 
-        fontSize: 18, 
-        fontWeight: 'bold' 
-    },
+    container: { flex: 1, backgroundColor: '#F7F7F7', padding: 15 },
+    title: { fontSize: 24, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 8 },
+    subtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 20 },
+    calendar: { borderRadius: 10, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+    loader: { position: 'absolute', top: 100, alignSelf: 'center', zIndex: 10 },
+    legendContainer: { flexDirection: 'row', justifyContent: 'space-around', padding: 20, marginTop: 10 },
+    legendItem: { flexDirection: 'row', alignItems: 'center' },
+    legendIndicator: { width: 20, height: 20, borderRadius: 10, marginRight: 8 },
+    legendText: { fontSize: 14, color: '#555' },
 });

@@ -1,11 +1,3 @@
-// Usado para o histórico de Início de Ciclo
-export interface Cycle {
-    id: string; // ID único do documento no Firestore
-    userId: string; // ID do usuário para segurança
-    startDate: string; // 'YYYY-MM-DD'
-    flowDurationDays: number; // Duração do fluxo em dias
-}
-
 // Estrutura para o Registro Diário de Sintomas (para a futura IA)
 export interface DailyTracking {
     date: string; // 'YYYY-MM-DD'

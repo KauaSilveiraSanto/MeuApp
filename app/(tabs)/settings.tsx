@@ -1,34 +1,26 @@
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useAuth } from '../../components/AuthContext';
-
-import { router } from 'expo-router';
+import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
+import { useAuth } from "../../components/AuthContext";
 
 export default function SettingsScreen() {
   const { logout } = useAuth();
-  const handleLogout = () => {
-    logout();
-    router.replace('/auth/login');
-  };
+
   return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <Text style={{ fontSize: 22, fontWeight: "bold" }}>⚙️ Tela de Configurações</Text>
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Sair</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>⚙️ Tela de Configurações</Text>
+      <Text style={styles.subtitle}>
+        Use o botão de sair no canto superior direito para deslogar da sua conta.
+      </Text>
+      <TouchableOpacity style={styles.button} onPress={logout}>
+        <Text style={styles.buttonText}>Sair</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  logoutButton: {
-    marginTop: 30,
-    backgroundColor: '#E91E63',
-    padding: 12,
-    borderRadius: 8,
-  },
-  logoutText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  container: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20, backgroundColor: '#fff' },
+  title: { fontSize: 22, fontWeight: "bold", marginBottom: 20 },
+  subtitle: { fontSize: 16, textAlign: 'center', marginBottom: 40, color: '#666' },
+  button: { backgroundColor: '#FF6F61', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 8 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });

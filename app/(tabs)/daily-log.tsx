@@ -3,9 +3,9 @@ import { router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-import { useAuth } from '../components/AuthContext'; // Importa o hook de autenticação
-import { DatabaseService } from '../services/storage';
-import { SYMPTOM_OPTIONS } from '../types/cycle';
+import { useAuth } from '../../components/AuthContext'; // Importa o hook de autenticação
+import { DatabaseService } from '../../services/storage';
+import { SYMPTOM_OPTIONS } from '../../types/cycle';
 
 export default function DailyLogScreen() {
     const { user } = useAuth(); // Pega o usuário logado

@@ -5,16 +5,13 @@ import { Link, router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
-import { FirestoreServiceInstance } from '../../services/storage';
-import { Cycle } from '../../types/cycle';
+import { Cycle } from '../../services/sqlite';
+import { DatabaseService } from '../../services/storage';
 import { calculateStats, CurrentCycleInfo, CyclePrediction, CycleStats, getCurrentCycleInfo, predictNextCycle } from '../../utils/cycle-calculations';
 
 // Cores definidas no TabLayout
 const PRIMARY_COLOR = '#E91E63'; 
 const SECONDARY_TEXT = '#666';
-
-// Instância do serviço de armazenamento
-const storage = FirestoreServiceInstance;
 
 // --- Componente Auxiliar para Boas-Vindas ---
 const Greeting = ({ userName }: { userName: string }) => (
@@ -49,8 +46,8 @@ const phaseTranslations: { [key: string]: string } = {
 export default function HomeScreen() {
     const { user } = useAuth(); 
     
-    // CORREÇÃO: Pega o email (string) do contexto de autenticação
-    const emailPrefix = user ? user.split('@')[0] : 'Usuária';
+    // Usa o email do objeto de usuário para saudação
+    const emailPrefix = user?.email ? user.email.split('@')[0] : 'Usuária';
     const userName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1); 
 
     const [cycles, setCycles] = useState<Cycle[]>([]);
@@ -62,8 +59,12 @@ export default function HomeScreen() {
     const fetchDataAndPredict = useCallback(async () => {
         setLoading(true);
         try {
+            // Requisito Chave: Garante que só buscamos dados se tivermos um ID de usuário.
+            if (!user?.id) {
+                throw new Error("ID do usuário não encontrado. Não é possível buscar os dados.");
+            }
             // Pega os ciclos (deve retornar ordenado do mais recente para o mais antigo)
-            const fetchedCycles = await storage.getAllCycles(); 
+            const fetchedCycles = await DatabaseService.getAllCycles(user.id); 
             setCycles(fetchedCycles);
 
             if (fetchedCycles.length > 0) {
@@ -74,7 +75,7 @@ export default function HomeScreen() {
                 const nextCyclePrediction = predictNextCycle(fetchedCycles[0], calculatedStats);
                 setPrediction(nextCyclePrediction);
 
-                const cycleInfo = getCurrentCycleInfo(fetchedCycles[0], nextCyclePrediction);
+                const cycleInfo = getCurrentCycleInfo(fetchedCycles[0], nextCyclePrediction, calculatedStats);
                 setCurrentInfo(cycleInfo);
             } else {
                 setStats(null);
@@ -88,7 +89,7 @@ export default function HomeScreen() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user?.id]); // Adiciona user.id como dependência
 
     // Recarrega os dados sempre que a tela é focada (navegação de volta)
     useFocusEffect(
@@ -118,7 +119,10 @@ export default function HomeScreen() {
                     </Text>
                     <TouchableOpacity 
                         style={[styles.quickActionButton, { marginTop: 20 }]} 
-                        onPress={() => router.push('/modal')}
+                        onPress={() => router.push({ 
+                            pathname: '/modal', 
+                            params: { date: new Date().toISOString().slice(0, 10) } 
+                        })}
                     >
                         <Ionicons name="add-circle" size={28} color="#FFF" />
                         <Text style={styles.quickActionButtonText}>Registrar Primeiro Ciclo</Text>
@@ -155,7 +159,7 @@ export default function HomeScreen() {
         let tipText = '';
         if (stats) {
             // CORREÇÃO: Usar as chaves em português definidas em 'CurrentCycleInfo'
-            if (currentPhaseKey === 'menstrual' && currentInfo.currentDay !== undefined) {
+            if (currentPhaseKey === 'menstrual' && currentInfo.currentDay !== undefined && stats.averageFlowDuration) {
                 tipText = `Dia ${currentCycleDay} do ciclo. É dia de descanso! Seu fluxo dura em média ${stats.averageFlowDuration} dias. Mantenha-se hidratada.`;
             } else if (currentPhaseKey === 'folicular' && currentInfo.currentDay !== undefined) {
                 tipText = `Dia ${currentCycleDay} do ciclo. Sua energia está aumentando! O ciclo médio é de ${stats.averageCycleLength} dias. Aproveite para planejar e fazer exercícios.`;

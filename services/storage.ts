@@ -1,14 +1,19 @@
 import {
     addCycle,
+    addDailyLog,
+    deleteDailyLog,
     getAllCycles,
-    loadDailyLog,
-    saveDailyLog
+    getLogForDate,
+    getLogsForPeriod
 } from './sqlite';
 
-// Interface compatível para uso nas telas
-export const FirestoreServiceInstance = {
+// Adaptador unificado para o serviço de banco de dados.
+// Renomeado de FirestoreServiceInstance para evitar confusão.
+export const DatabaseService = {
   addCycle,
   getAllCycles,
-  saveDailyLog,
-  loadDailyLog,
+  addDailyLog,
+  getLogsForPeriod,
+  getLogForDate,
+  deleteDailyLog,
 };
