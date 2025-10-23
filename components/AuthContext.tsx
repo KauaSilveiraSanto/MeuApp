@@ -1,6 +1,6 @@
 import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { API_BASE_URL } from '../src/config/api';
+import api from '../services/api';
 import { firebaseAuth, isFirebaseConfigured } from '../src/services/firebase';
 
 // --- Tipos de Dados Corretos ---
@@ -55,22 +55,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             console.log('Utilizador criado no Firebase com sucesso:', firebaseUser.uid);
 
-            // Passo B: Tenta criar o utilizador na nossa API
-            const apiResponse = await fetch(`${API_BASE_URL}/usuarios`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: firebaseUser.email,
-                    firebase_uid: firebaseUser.uid,
-                }),
+            // Passo B: Tenta criar o utilizador na nossa API usando o serviço centralizado
+            const apiResponse = await api.post('/usuarios', {
+                email: firebaseUser.email,
+                firebase_uid: firebaseUser.uid,
             });
-
-            if (!apiResponse.ok) {
-                const errorData = await apiResponse.json();
-                throw new Error(errorData.error || 'Falha ao registar o utilizador no nosso servidor.');
-            }
             
-            const nossoUsuario = await apiResponse.json();
+            const nossoUsuario = apiResponse.data;
             console.log('Utilizador sincronizado com o nosso banco de dados:', nossoUsuario);
             
             return userCredential;
